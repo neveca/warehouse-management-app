@@ -1,53 +1,97 @@
 import 'package:flutter/material.dart';
-import '../../models/stock_transaction.dart';
-import 'widgets/quantity_selector.dart';
-import 'widgets/stock_dropdown.dart';
-
-import '../../database/db_helper.dart';
+import 'package:provider/provider.dart';
+import '../../api/item_service.dart';
+import '../../api/warehouse_service.dart';
+import '../../api/stock_service.dart';
+import '../../api/auth_provider.dart';
 
 class StockInScreen extends StatefulWidget {
-  const StockInScreen({super.key});
+  const StockInScreen({super.key}); // Removed token parameter
 
   @override
   State<StockInScreen> createState() => _StockInScreenState();
 }
 
 class _StockInScreenState extends State<StockInScreen> {
-  String? selectedItem;
-  DateTime? selectedDate;
-  String? selectedDestination;
+  List<dynamic> items = [];
+  List<dynamic> warehouses = [];
+  String? selectedItemName;
+  String? selectedWarehouseName;
   int? quantity;
-  final noteController = TextEditingController();
-  final manualQuantityController = TextEditingController();
+  DateTime? selectedDate;
+  final TextEditingController noteController = TextEditingController();
+  final TextEditingController manualQuantityController = TextEditingController();
   bool isOtherSelected = false;
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchDropdownData();
+  }
+
+  Future<void> fetchDropdownData() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Authentication required")),
+      );
+      return;
+    }
+
+    setState(() => isLoading = true);
+    try {
+      items = await ItemService.getAllItems(token); // Use token from provider
+      warehouses = await WarehouseService.getAllWarehouses(token); // Use token from provider
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load data: $e")),
+      );
+    }
+    setState(() => isLoading = false);
+  }
+
+  int? getItemIdByName(String? name) =>
+      items.firstWhere((e) => e["item_name"] == name, orElse: () => null)?["item_id"];
+
+  int? getWarehouseIdByName(String? name) =>
+      warehouses.firstWhere((e) => e["warehouse_name"] == name, orElse: () => null)?["warehouse_id"];
 
   void _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: selectedDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
     );
-    if (picked != null) {
-      setState(() {
-        selectedDate = picked;
-      });
-    }
+    if (picked != null) setState(() => selectedDate = picked);
   }
 
   void _resetForm() {
     setState(() {
-      selectedItem = null;
-      selectedDate = null;
-      selectedDestination = null;
+      selectedItemName = null;
+      selectedWarehouseName = null;
       quantity = null;
       isOtherSelected = false;
-      manualQuantityController.clear();
+      selectedDate = null;
       noteController.clear();
+      manualQuantityController.clear();
     });
   }
 
-  void _saveForm() async {
+  Future<void> _saveForm() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Authentication required")),
+      );
+      return;
+    }
+
     if (isOtherSelected && manualQuantityController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please enter quantity")),
@@ -59,68 +103,83 @@ class _StockInScreenState extends State<StockInScreen> {
         ? int.tryParse(manualQuantityController.text)
         : quantity;
 
-    if (selectedItem != null &&
-        selectedDate != null &&
-        selectedDestination != null &&
-        finalQuantity != null &&
-        finalQuantity > 0) {
-      final tx = StockTransaction(
-        item: selectedItem!,
-        date: selectedDate!.toIso8601String(),
-        destination: selectedDestination!,
-        quantity: finalQuantity,
-        note: noteController.text,
-      );
+    final itemId = getItemIdByName(selectedItemName);
+    final warehouseId = getWarehouseIdByName(selectedWarehouseName);
 
-      await DBHelper.insertTransaction(tx);  // ✅ Simpan ke SQLite
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 10),
-              Text("Transaction saved successfully!"),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      _resetForm();
-    } else {
+    if (itemId == null || warehouseId == null || finalQuantity == null || finalQuantity <= 0 || selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please fill all required fields")),
       );
+      return;
+    }
+
+    setState(() => isLoading = true);
+    try {
+      // Get current stock for this item+warehouse
+      final stocks = await StockService.getByWarehouse(token, warehouseId);
+      var stock = stocks.firstWhere((s) => s['item_id'] == itemId, orElse: () => null);
+      int newQty = (stock != null ? stock['quantity'] : 0) + finalQuantity;
+
+      final success = await StockService.upsertStock(token, {
+        "warehouse_id": warehouseId,
+        "item_id": itemId,
+        "quantity": newQty,
+        "last_updated": DateTime.now().toIso8601String(),
+      });
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 10),
+                Text("Stock in successful!"),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        _resetForm();
+      } else {
+        throw Exception("API failed");
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to save: $e")),
+      );
+    } finally {
+      setState(() => isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final itemNames = items.map((e) => e["item_name"].toString()).toList();
+    final warehouseNames = warehouses.map((e) => e["warehouse_name"].toString()).toList();
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Incoming stock"),
-        leading: const BackButton(),
-      ),
-      body: SingleChildScrollView(
+      appBar: AppBar(title: const Text("Incoming Stock")),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            StockDropdown(
-              label: "Item",
-              value: selectedItem,
-              items: const ['Rosemary', 'Basil', 'Parsley'],
-              onChanged: (val) => setState(() => selectedItem = val),
+            DropdownButtonFormField<String>(
+              value: selectedItemName,
+              items: itemNames
+                  .map((name) => DropdownMenuItem(value: name, child: Text(name)))
+                  .toList(),
+              onChanged: (val) => setState(() => selectedItemName = val),
+              decoration: const InputDecoration(labelText: "Item", border: OutlineInputBorder()),
             ),
             const SizedBox(height: 12),
             InkWell(
               onTap: _pickDate,
               child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: "Date of transaction",
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: "Date of transaction", border: OutlineInputBorder()),
                 child: Text(
                   selectedDate != null
                       ? "${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}"
@@ -132,26 +191,43 @@ class _StockInScreenState extends State<StockInScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            StockDropdown(
-              label: "Destination",
-              value: selectedDestination,
-              items: const ['Boulevard Warehouse', 'Main Warehouse'],
-              onChanged: (val) => setState(() => selectedDestination = val),
+            DropdownButtonFormField<String>(
+              value: selectedWarehouseName,
+              items: warehouseNames
+                  .map((name) => DropdownMenuItem(value: name, child: Text(name)))
+                  .toList(),
+              onChanged: (val) => setState(() => selectedWarehouseName = val),
+              decoration: const InputDecoration(labelText: "Warehouse", border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
-            QuantitySelector(
-              selectedQuantity: quantity,
-              onQuantitySelected: (val) {
-                setState(() {
-                  if (val == null) {
-                    isOtherSelected = true;
-                    quantity = null;
-                  } else {
-                    isOtherSelected = false;
-                    quantity = val;
-                  }
-                });
-              },
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [10, 100, 500, 1000, 10000].map((q) {
+                final isSelected = quantity == q && !isOtherSelected;
+                return ChoiceChip(
+                  label: Text('$q'),
+                  selected: isSelected,
+                  selectedColor: Colors.deepPurple,
+                  onSelected: (_) {
+                    setState(() {
+                      isOtherSelected = false;
+                      quantity = q;
+                    });
+                  },
+                );
+              }).toList()
+                ..add(ChoiceChip(
+                  label: const Text("Other"),
+                  selected: isOtherSelected,
+                  selectedColor: Colors.deepPurple.shade400,
+                  onSelected: (_) {
+                    setState(() {
+                      isOtherSelected = true;
+                      quantity = null;
+                    });
+                  },
+                )),
             ),
             if (isOtherSelected) ...[
               const SizedBox(height: 8),
@@ -182,7 +258,7 @@ class _StockInScreenState extends State<StockInScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _saveForm,
+                    onPressed: isLoading ? null : _saveForm,
                     child: const Text("Save"),
                   ),
                 ),

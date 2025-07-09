@@ -1,3 +1,4 @@
+/*
 import 'package:flutter/material.dart';
 import 'widgets/action_button.dart';
 import 'widgets/capacity_status_card.dart';
@@ -47,3 +48,4 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
+*/

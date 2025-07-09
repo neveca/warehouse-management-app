@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import '../screens/home/home_screen.dart'; // arahkan ke halaman home
+import 'package:provider/provider.dart';
+import '../api/auth_service.dart';
+import '../api/auth_provider.dart';
+import '../screens/home/home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,8 +15,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
   bool isPasswordVisible = false;
+  bool isLoading = false;
 
-  void _login() {
+  void _login() async {
     final username = usernameController.text;
     final password = passwordController.text;
 
@@ -24,16 +28,39 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Simulasi sukses login
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-    );
+    setState(() => isLoading = true);
+
+    try {
+      final token = await AuthService.login(username, password);
+
+      if (token != null) {
+        // Save token using AuthProvider
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.setToken(token);
+
+        // Navigate to HomeScreen (no need to pass token manually)
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HomeScreen()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Invalid username or password")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Login failed: ${e.toString()}")),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isFilled = usernameController.text.isNotEmpty && passwordController.text.isNotEmpty;
+    final isFilled = usernameController.text.isNotEmpty &&
+        passwordController.text.isNotEmpty;
 
     return Scaffold(
       body: SafeArea(
@@ -43,13 +70,17 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 32),
-              const Text("Welcome Back",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+              const Text(
+                "Welcome Back",
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple
+                ),
+              ),
               const SizedBox(height: 4),
               const Text("Hello there, sign in to continue"),
               const SizedBox(height: 48),
-
-              // Icon tengah
               Center(
                 child: Container(
                   padding: const EdgeInsets.all(24),
@@ -61,8 +92,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 48),
-
-              // Username
               TextField(
                 controller: usernameController,
                 decoration: const InputDecoration(
@@ -74,8 +103,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
-
-              // Password
               TextField(
                 controller: passwordController,
                 obscureText: !isPasswordVisible,
@@ -96,29 +123,30 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 onChanged: (_) => setState(() {}),
               ),
-
-              // Forgot password
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () {},
-                  child: const Text("Forgot your password?", style: TextStyle(color: Colors.deepPurple)),
+                  child: const Text(
+                      "Forgot your password?",
+                      style: TextStyle(color: Colors.deepPurple)
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
-
-              // Login Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: isFilled ? _login : null,
+                  onPressed: isFilled && !isLoading ? _login : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
                     disabledBackgroundColor: Colors.deepPurple.shade100,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
-                  child: const Text("Login", style: TextStyle(fontSize: 16)),
+                  child: isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("Login", style: TextStyle(fontSize: 16)),
                 ),
               ),
             ],
