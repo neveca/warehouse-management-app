@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'auth/login_screen.dart';
+import 'api/auth_provider.dart';
+import 'screens/home/home_screen.dart'; // Import your HomeScreen
 
 void main() {
-  runApp(const InventoryApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => AuthProvider()..loadToken(), // Load token on startup
+      child: const InventoryApp(),
+    ),
+  );
 }
 
 class InventoryApp extends StatelessWidget {
@@ -18,7 +26,14 @@ class InventoryApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const LoginScreen(),
+      home: Consumer<AuthProvider>(
+        builder: (context, authProvider, _) {
+          // Auto-route: HomeScreen if logged in, else LoginScreen
+          return authProvider.token != null
+              ? const HomeScreen()
+              : const LoginScreen();
+        },
+      ),
     );
   }
 }
