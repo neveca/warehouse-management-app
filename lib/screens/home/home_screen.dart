@@ -10,6 +10,9 @@ import 'widgets/capacity_status_card.dart';
 import '../stock_out/stock_out_screen.dart';
 import '../report/report_screen.dart';
 
+import 'widgets/transaction_summary.dart';
+import 'widgets/stock_quantity_chart.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});  // Removed token parameter
 
@@ -146,6 +149,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Text("Stocks (first warehouse): ${stocks.length}"),
               const SizedBox(height: 16),
               const CapacityStatusCard(),
+
+              /// --- Data dummy
+              TransactionSummary(stockIn: 1400, stockOut: 300),
+              const SizedBox(height: 32),
+              StockQuantityChart(
+                stockInData: [0, 100, 0, 110, 105],
+                stockOutData: [95, 0, 93, 0, 0],
+              ),
             ],
           ),
         ),
