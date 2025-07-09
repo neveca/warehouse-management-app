@@ -4,6 +4,7 @@ import 'widgets/action_button.dart';
 import 'widgets/capacity_status_card.dart';
 import 'widgets/warehouse_progress_bar.dart';
 import '../stock_out/stock_out_screen.dart';
+import '../report/report_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -61,7 +62,17 @@ class HomeScreen extends StatelessWidget {
                       );
                     },
                   ),
-                  const ActionButton(icon: Icons.bar_chart, label: 'Report', color: Colors.teal),
+                  ActionButton(
+                    icon: Icons.bar_chart,
+                    label: 'Report',
+                    color: Colors.teal,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ReportScreen()),
+                      );
+                    },
+                  ),
                   const ActionButton(icon: Icons.file_copy, label: 'Export', color: Colors.blue),
                 ],
               ),
