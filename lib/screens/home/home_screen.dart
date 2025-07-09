@@ -3,6 +3,7 @@ import '../stock_in/stock_in_screen.dart';
 import 'widgets/action_button.dart';
 import 'widgets/capacity_status_card.dart';
 import 'widgets/warehouse_progress_bar.dart';
+import '../stock_out/stock_out_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -47,7 +48,19 @@ class HomeScreen extends StatelessWidget {
                       );
                     },
                   ),
-                  const ActionButton(icon: Icons.upload, label: 'Stock out', color: Colors.red),
+                  ActionButton(
+                    icon: Icons.upload,
+                    label: 'Stock out',
+                    color: Colors.red,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const StockOutScreen(),
+                        ),
+                      );
+                    },
+                  ),
                   const ActionButton(icon: Icons.bar_chart, label: 'Report', color: Colors.teal),
                   const ActionButton(icon: Icons.file_copy, label: 'Export', color: Colors.blue),
                 ],
